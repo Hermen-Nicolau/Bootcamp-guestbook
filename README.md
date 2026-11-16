@@ -21,7 +21,7 @@ A small guestbook app for the Tanzu Platform for Cloud Foundry Bootcamp. Each st
 Browser ──► GoRouter ──► bootcamp-app-<you> (your space)
                                    │  bound to bootcamp-db (user-provided, in your space)
                                    ▼  credentials from VCAP_SERVICES
-              bootcamp-postgres (marketplace Postgres, in the instructor's space)
+              bootcamp-db (marketplace Postgres, in the instructor's space)
                                    ▲
 Other students' apps ──► their own bootcamp-db (same credentials) ──┘
 ```
