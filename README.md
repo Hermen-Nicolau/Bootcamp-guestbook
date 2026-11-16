@@ -6,27 +6,25 @@ A small guestbook app for the Tanzu Platform for Cloud Foundry Bootcamp. Each st
 
 | Concept | Where you see it in the lab |
 | --- | --- |
-| Orgs, spaces and roles | Each student creates and targets their own space in the bootcamp org |
-| `cf push` and manifests | One-instance push with the Python buildpack, a random route and an HTTP health check |
-| Marketplace and user-provided services | The instructor creates one Postgres instance from the marketplace. Each space gets a user-provided `bootcamp-db` with its credentials, and each app binds to that |
+| Orgs, spaces and roles | You create and work in your own space in the bootcamp org |
+| `cf push` and manifests | You deploy the app using the manifest in this repo |
+| Services and binding | You connect your app to a database service the instructor prepared |
 | `VCAP_SERVICES` | The app reads its database credentials from the environment, and none live in the code |
-| Logs and status | `cf app`, `cf events`, `cf logs` and Apps Manager show the same app from two angles |
-| Quotas | Scaling to 3 instances hits the org quota until an admin raises it |
-| Load balancing and HA | With 3 instances, the page shows the GoRouter rotating requests across instances |
-| Cleanup | Unbinding, deleting your service entry without touching the shared database, and deleting the app and its route |
+| Logs and status | You inspect the same app from the cf CLI and from Apps Manager |
+| Quotas | Scaling up runs into a limit you have to find and get raised |
+| Load balancing and HA | With several instances, the page shows the GoRouter rotating requests |
+| Cleanup | You remove everything you created without affecting anyone else |
 
 ## How the app works
 
 ```
-Browser ──► GoRouter ──► bootcamp-app-<you> (1–3 instances, your space)
+Browser ──► GoRouter ──► bootcamp-app-<you> (your space)
                                    │  bound to bootcamp-db (user-provided, in your space)
                                    ▼  credentials from VCAP_SERVICES
-              bootcamp-postgres (marketplace Postgres, in the instructor's bootcamp-shared space)
+              bootcamp-postgres (marketplace Postgres, in the instructor's space)
                                    ▲
 Other students' apps ──► their own bootcamp-db (same credentials) ──┘
 ```
-
-The Postgres broker on OMA Eng doesn't support service sharing. Instead, the instructor creates a service key on `bootcamp-postgres` and creates a user-provided service called `bootcamp-db` with those credentials in every student space.
 
 - **Frontend:** a single HTML page with a form. It polls `/api/entries` every 3 seconds, so new entries appear without a refresh.
 - **Backend:** Python's built-in HTTP server with no web framework. It stores entries in the `bootcamp_guestbook` table and creates the table on first use.
@@ -42,135 +40,136 @@ The Postgres broker on OMA Eng doesn't support service sharing. Instead, the ins
 | `/db` | GET | Database check: bound service, host, PostgreSQL version and entry count. Returns 503 if not connected |
 | `/health` | GET | Liveness check: always 200 while the process is up. It doesn't check the database on purpose, so a database blip doesn't get every instance restarted |
 
-The app finds Postgres credentials in `VCAP_SERVICES` whether the broker provides a `uri`, a `jdbcUrl`, or separate `host`, `port`, `name`, `username` and `password` fields.
-
 ### Files
 
 ```
 app.py             the whole app
-manifest.yml       1 instance, 256M, python_buildpack, random route, HTTP health check on /health
-Procfile           web: python app.py
+manifest.yml       instances, memory, buildpack, route and health check settings
+Procfile           how the platform starts the app
 requirements.txt   pg8000
 vendor/            pg8000 and its dependencies as wheels, for offline staging
 ```
 
-Requires `python_buildpack` with Python 3.9 or later.
+---
+
+## The lab (about 45 minutes)
+
+This lab doesn't give you the commands. You get a goal for each task and a way to check you've reached it, and you work out how to get there. `cf help -a`, `cf <command> --help`, Apps Manager and the Day 1 slides have everything you need. Work with your neighbours, and ask the instructor when you're stuck for more than a few minutes.
+
+The instructor will give you:
+
+- the cf API endpoint and the Apps Manager URL
+- the name of the bootcamp org
+
+Use your first name in lowercase wherever this guide says `<you>`.
+
+### Task 1 – Your own space
+
+**Goal:** you're logged in to the foundation with the cf CLI, and you're targeting a space named `<you>` inside the bootcamp org.
+
+**You're done when:**
+- `cf target` shows the bootcamp org and your space
+- you can name the roles you hold in your space, and explain how you got them
+
+**Think about:** Can a classmate see what you deploy in your space? Why or why not?
+
+### Task 2 – Deploy the app
+
+**Goal:** the app from this repo is running in your space as `bootcamp-app-<you>`, with one instance.
+
+**You're done when:**
+- the app shows as running, with 1 of 1 instances
+- you can open its route in a browser and see the guestbook page
+- you can explain what the red status bar is telling you
+
+**Hints:**
+- Read `manifest.yml` before you deploy. What does it decide for you?
+- The app name in the manifest isn't `bootcamp-app-<you>`. How do you deploy it under your own name?
+- `/db` tells you, in JSON, whether the app can reach a database.
+
+**Think about:** Which parts of the app's status are the desired state, and which are the actual state?
+
+### Task 3 – Connect to the shared database
+
+**Goal:** your app is connected to the database through the `bootcamp-db` service in your space, and you've signed the guestbook.
+
+**You're done when:**
+- the status bar on your page is green
+- `/db` returns `"ok": true`
+- your entry appears on the page, and your classmates' entries appear on your page as they sign
+
+**Hints:**
+- The service already exists in your space. Find it before you try to create anything.
+- Connecting a service to an app takes more than one step. A running app doesn't see new environment variables on its own.
+- Find where the app gets its database credentials. What is the name of that environment variable, and what's in it?
+
+**Think about:**
+- Your app and your classmate's app run in different spaces, yet they show the same data. How?
+- Every space's `bootcamp-db` holds the same credentials. What are the downsides of that?
+
+### Task 4 – Observe your app
+
+**Goal:** you can answer questions about your app from both the cf CLI and Apps Manager.
+
+**Find and compare, in both tools:**
+- the app's state, instance count, and memory use per instance
+- the history of what has happened to the app (push, bind, restart)
+- the services bound to it, and its environment variables
+- its logs, both recent and live
+
+**In the logs, find:**
+- a line from staging
+- a line from the Cloud Controller about something you did
+- a line from your app when someone signs the guestbook
+- a GoRouter line for a request. What's the status code, and how does `response_time` compare to `gorouter_time`?
+
+**Think about:** If you had to open a ticket about a slow request, which value from the router log would you include?
+
+### Task 5 – Scale out
+
+**Goal:** your app runs 3 instances.
+
+**Expect a failure on the way.** When it happens:
+- read the error and work out what limit you've hit, and where it's set
+- find the numbers behind it: what's the limit, and what's using it up?
+- work out who has permission to raise that limit, and ask the instructor
+
+**You're done when:**
+- the app shows 3 of 3 instances
+- the status bar on your page shows different instances answering as it refreshes
+- new log lines from your app come from more than one instance
+
+**Think about:**
+- You only asked for 2 more instances. Why wasn't there room?
+- Which high availability level from Day 1 do 3 instances give you?
+
+### Task 6 – Clean up
+
+**Goal:** you've removed everything you created, in the right order, without affecting anyone else.
+
+**You're done when:**
+- your app is no longer bound to `bootcamp-db`, and you've confirmed the app noticed
+- `bootcamp-db` is gone from your space
+- your app and its route are gone, and listing apps, routes and services in your space shows nothing
+
+**Think about:**
+- After you unbind, does the running app lose its database connection right away? Why or why not?
+- Deleting `bootcamp-db` from your space doesn't delete the database or your classmates' entries. Why?
+- If you delete an app without removing its route, what's left behind?
 
 ---
 
-## Lab steps (about 45 minutes)
+## When you're stuck
 
-Set these once per terminal session. Use your first name in lowercase, and the org name your instructor gives you:
-
-```bash
-export ME=<your-first-name>
-export ORG=<bootcamp-org-name>
-```
-
-### Step 1 – Log in and create your space
-
-```bash
-cf api <cf-api-endpoint>
-cf login --sso                     # or: cf login
-cf target -o $ORG
-cf create-space $ME
-cf target -o $ORG -s $ME
-cf space $ME
-cf space-users $ORG $ME            # you're Space Manager and Space Developer in your new space
-```
-
-If you get "not authorized", ask the instructor for access.
-
-### Step 2 – Push the app with one instance
-
-```bash
-git clone <this-repo-url> && cd bootcamp-app
-cat manifest.yml
-cf push bootcamp-app-$ME
-cf app bootcamp-app-$ME
-ROUTE=$(cf app bootcamp-app-$ME | awk '/^routes:/ {print $2}')
-curl -sk https://$ROUTE/db         # "bound": false – no database yet
-```
-
-Open `https://$ROUTE` in your browser. The page loads, but the status bar is red.
-
-### Step 3 – Bind to the shared database and sign the guestbook
-
-```bash
-cf services                        # bootcamp-db, a user-provided service the instructor created in your space
-cf bind-service bootcamp-app-$ME bootcamp-db
-cf restart bootcamp-app-$ME        # a running app only sees new credentials after a restart
-cf env bootcamp-app-$ME            # find bootcamp-db under VCAP_SERVICES
-curl -sk https://$ROUTE/db         # "ok": true
-```
-
-Sign the guestbook in your browser, then watch your classmates' entries appear. You can also sign from the CLI:
-
-```bash
-curl -sk -X POST https://$ROUTE/api/entries -H 'Content-Type: application/json' \
-     -d '{"name":"<your name>","hometown":"<your hometown>"}'
-```
-
-### Step 4 – Check logs and status (CLI and Apps Manager)
-
-```bash
-cf app bootcamp-app-$ME
-cf events bootcamp-app-$ME
-cf logs bootcamp-app-$ME --recent  # look for API, STG, CELL, APP/PROC/WEB and RTR lines
-cf logs bootcamp-app-$ME           # live stream; leave it running in a second terminal
-```
-
-In Apps Manager, open your org, then your space, then `bootcamp-app-<you>`. Compare the Overview, Logs, Services, Environment Variables and Events with what the CLI showed.
-
-### Step 5 – Scale to 3 instances and hit the quota
-
-```bash
-cf scale bootcamp-app-$ME -i 3     # should FAIL: the org's app instance limit is reached
-cf org $ORG
-cf org-quota <org-quota-name>
-```
-
-One volunteer with admin access raises the org quota:
-
-```bash
-cf update-org-quota <org-quota-name> -a 100
-```
-
-Then everyone scales again:
-
-```bash
-cf scale bootcamp-app-$ME -i 3
-cf app bootcamp-app-$ME            # 3/3
-```
-
-Keep the page open. The status bar shows which instance answered each poll (0, 1, 2), and the Instance column shows which instance saved each entry.
-
-### Step 6 – Clean up
-
-```bash
-cf unbind-service bootcamp-app-$ME bootcamp-db
-cf restart bootcamp-app-$ME
-curl -sk https://$ROUTE/db         # "bound": false again
-cf delete-service bootcamp-db -f   # removes only your space's credentials entry; the database is untouched
-cf delete bootcamp-app-$ME -r -f   # -r also deletes the route
-cf apps && cf routes && cf services   # all empty
-```
-
-The instructor deletes the service key and the `bootcamp-postgres` instance at the end.
-
----
-
-## Troubleshooting
-
-| Symptom | Fix |
+| What you see | Where to look |
 | --- | --- |
-| Status bar says *No Postgres service bound* | Bind it, then `cf restart` |
-| Bound, but the connection times out | No App Security Group allows port 5432 to the database. Ask the instructor, then `cf restart` |
-| `bootcamp-db` isn't in `cf services` | The instructor hasn't created it in your space yet. Ask them |
-| A classmate's entries don't show | Their `bootcamp-db` must have the same credentials as yours. Compare the host in `cf env` |
-| `password authentication failed` | The instructor's service key changed. They need to update `bootcamp-db` in every space, then you run `cf restart` |
-| Staging fails | `cf buildpacks` must list `python_buildpack`, and `vendor/` must contain all 5 wheels |
-| `cf scale -i 3` works with no error | Some students haven't pushed yet, or the quota was already raised |
+| "Not authorized" | Which role does that command need? Check your roles in the org and in your space |
+| The status bar says no database is bound | Is the service bound? Did the app pick up the change? |
+| Bound, but the connection times out | Something between the app container and the database is blocking traffic. Which Day 2 topic controls outgoing traffic from apps? |
+| `bootcamp-db` isn't in your space | Ask the instructor. It's created for each space after everyone has one |
+| Staging fails | Does the buildpack in the manifest exist on this foundation? Is the `vendor/` folder complete? |
+| A classmate's entries don't show | Compare the database host your app and theirs are using |
+| Scaling worked without an error | Maybe someone already raised the limit. Check what it is now |
 
 ## Run it locally (optional)
 
@@ -181,3 +180,7 @@ VCAP_SERVICES='{"user-provided":[{"name":"bootcamp-db","credentials":{"uri":"pos
 ```
 
 Then open http://localhost:8080.
+
+---
+
+*Instructors: the full step-by-step commands, setup and answer key are in the instructor lab guide, not in this repo.*
