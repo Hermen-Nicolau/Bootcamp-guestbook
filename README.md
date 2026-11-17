@@ -65,7 +65,7 @@ Use your first name in lowercase wherever this guide says `<you>`.
 
 ### Task 1 – Your own space
 
-**Goal:** you're logged in to the foundation with the cf CLI, and you're targeting a space named `<you>` inside the bootcamp org.
+**Goal:** you're logged in to the foundation with the cf CLI, and you're targeting a space named `dev-<you>` inside the bootcamp org.
 
 **You're done when:**
 - `cf target` shows the bootcamp org and your space
